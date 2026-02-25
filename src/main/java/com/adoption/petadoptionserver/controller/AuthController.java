@@ -2,8 +2,12 @@ package com.adoption.petadoptionserver.controller;
 
 import com.adoption.petadoptionserver.dto.*;
 import com.adoption.petadoptionserver.interfaces.AuthService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URI;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -16,33 +20,18 @@ public class AuthController {
         this.authService = authService;
     }
 
-    // Register new user
+    // Register new user -> returns 201 Created + Location header
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        // service should validate and throw or return result
-        var result = authService.register(request);
-        // result could be user DTO or a message
-        return ResponseEntity.ok(result);
+    public ResponseEntity<UserDto> register(@Valid @RequestBody RegisterRequest request, UriComponentsBuilder uriBuilder) {
+        UserDto created = authService.register(request);
+        URI uri = uriBuilder.path("/api/users/{id}").buildAndExpand(created.getId()).toUri();
+        return ResponseEntity.created(uri).body(created);
     }
 
     // Login - return token / auth response
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest) {
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse auth = authService.login(loginRequest);
         return ResponseEntity.ok(auth);
-    }
-
-    // Optional: refresh token endpoint
-    @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refresh(@RequestHeader("Authorization") String refreshToken) {
-        AuthResponse updated = authService.refresh(refreshToken);
-        return ResponseEntity.ok(updated);
-    }
-
-    // Optional: logout (invalidate refresh token) - depends on implementation
-    @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String token) {
-        authService.logout(token);
-        return ResponseEntity.noContent().build();
     }
 }

@@ -1,6 +1,5 @@
 package com.adoption.petadoptionserver.interfaces;
 
-// RequestService
 import com.adoption.petadoptionserver.dto.AdoptionRequestDto;
 
 import java.util.List;

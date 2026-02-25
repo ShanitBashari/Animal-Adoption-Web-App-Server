@@ -2,12 +2,14 @@ package com.adoption.petadoptionserver.controller;
 
 import com.adoption.petadoptionserver.dto.AdoptionRequestDto;
 import com.adoption.petadoptionserver.interfaces.RequestService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/requests")
@@ -22,7 +24,7 @@ public class RequestController {
 
     // Create a new adoption request
     @PostMapping
-    public ResponseEntity<AdoptionRequestDto> create(@RequestBody AdoptionRequestDto dto, UriComponentsBuilder uriBuilder) {
+    public ResponseEntity<AdoptionRequestDto> create(@Valid @RequestBody AdoptionRequestDto dto, UriComponentsBuilder uriBuilder) {
         AdoptionRequestDto created = requestService.create(dto);
         URI uri = uriBuilder.path("/api/requests/{id}").buildAndExpand(created.getId()).toUri();
         return ResponseEntity.created(uri).body(created);
@@ -52,9 +54,11 @@ public class RequestController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Reject a request
+    // Reject a request — accept small JSON body: { "reason": "..." }
     @PostMapping("/{id}/reject")
-    public ResponseEntity<AdoptionRequestDto> reject(@PathVariable Long id, @RequestBody(required = false) String reason) {
+    public ResponseEntity<AdoptionRequestDto> reject(@PathVariable Long id,
+                                                     @RequestBody(required = false) Map<String,String> body) {
+        String reason = body != null ? body.get("reason") : null;
         return requestService.reject(id, reason)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());

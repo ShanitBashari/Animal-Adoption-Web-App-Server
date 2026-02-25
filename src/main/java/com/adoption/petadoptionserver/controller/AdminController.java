@@ -24,18 +24,18 @@ public class AdminController {
         return ResponseEntity.ok(adminService.listUsers());
     }
 
-    // Promote user to admin
-    @PostMapping("/users/{id}/promote")
-    public ResponseEntity<UserDto> promote(@PathVariable Long id) {
-        return adminService.promoteToAdmin(id)
+    // Deactivate user (admin)
+    @PatchMapping("/users/{id}/deactivate")
+    public ResponseEntity<UserDto> deactivate(@PathVariable Long id) {
+        return adminService.deactivateUser(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Deactivate user
-    @PostMapping("/users/{id}/deactivate")
-    public ResponseEntity<UserDto> deactivate(@PathVariable Long id) {
-        return adminService.deactivateUser(id)
+    // Optional: Activate user (admin) - מומלץ שיהיה גם הפוך
+    @PatchMapping("/users/{id}/activate")
+    public ResponseEntity<UserDto> activate(@PathVariable Long id) {
+        return adminService.activateUser(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
