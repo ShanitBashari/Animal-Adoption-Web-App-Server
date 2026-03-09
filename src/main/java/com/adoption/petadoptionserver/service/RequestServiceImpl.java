@@ -45,6 +45,22 @@ public class RequestServiceImpl implements RequestService {
                 .reason(r.getReason())
                 .createdAt(r.getCreatedAt() != null ? r.getCreatedAt().format(dtf) : null)
                 .updatedAt(r.getUpdatedAt() != null ? r.getUpdatedAt().format(dtf) : null)
+
+                .animalName(r.getAnimal().getName())
+                .animalImage(r.getAnimal().getImage())
+                .animalCategory(
+                        r.getAnimal().getCategory() != null
+                                ? r.getAnimal().getCategory().getName()
+                                : null
+                )
+                .animalLocation(r.getAnimal().getLocation())
+                .animalGender(r.getAnimal().getGender())
+                .animalAge(r.getAnimal().getAge())
+                .animalSize(r.getAnimal().getSize())
+                .animalOwnerName(r.getAnimal().getOwnerName())
+                .animalOwnerPhone(r.getAnimal().getOwnerPhone())
+                .animalDescription(r.getAnimal().getDescription())
+                .animalStatus(r.getAnimal().getStatus())
                 .build();
     }
 
@@ -72,7 +88,9 @@ public class RequestServiceImpl implements RequestService {
 
     @Override
     public AdoptionRequestDto create(AdoptionRequestDto dto) {
-        if (dto == null) throw new IllegalArgumentException("request dto is required");
+        if (dto == null) {
+            throw new IllegalArgumentException("request dto is required");
+        }
 
         User user = userRepo.findById(dto.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -80,7 +98,10 @@ public class RequestServiceImpl implements RequestService {
         Animal animal = animalRepo.findById(dto.getAnimalId())
                 .orElseThrow(() -> new IllegalArgumentException("Animal not found"));
 
-        // Prevent duplicate pending request
+        if (animal.getOwnerUser() != null && animal.getOwnerUser().getId().equals(user.getId())) {
+            throw new IllegalStateException("You cannot adopt your own animal listing");
+        }
+
         if (requestRepo.existsByUser_IdAndAnimal_IdAndStatus(user.getId(), animal.getId(), "PENDING")) {
             throw new IllegalStateException("You already sent a pending request for this animal");
         }

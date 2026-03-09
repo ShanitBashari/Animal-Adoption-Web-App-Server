@@ -9,11 +9,9 @@ public interface AnimalService {
     List<AnimalDto> findAll();
     Optional<AnimalDto> findById(Long id);
     List<AnimalDto> search(String q, String category);
-
     AnimalDto createForUser(String username, AnimalDto dto);
     Optional<AnimalDto> updateForUser(String username, Long id, AnimalDto dto);
-
     boolean deleteForUser(String username, Long id);
-
     List<AnimalDto> findMine(String username);
+    Optional<AnimalDto> activateForUser(String username, Long id);
 }

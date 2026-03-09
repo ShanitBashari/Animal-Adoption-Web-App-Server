@@ -162,4 +162,15 @@ public class AnimalController {
 
         return "/uploads/" + filename;
     }
+
+    @PutMapping("/{id}/activate")
+    public ResponseEntity<AnimalDto> activate(Principal principal, @PathVariable Long id) {
+        try {
+            return animalService.activateForUser(principal.getName(), id)
+                    .map(ResponseEntity::ok)
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        } catch (RuntimeException ex) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+    }
 }

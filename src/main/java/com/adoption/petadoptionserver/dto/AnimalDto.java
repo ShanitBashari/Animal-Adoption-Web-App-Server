@@ -23,7 +23,7 @@ public class AnimalDto {
     private String size;
 
     @Min(value = 0, message = "age must be >= 0")
-    private Integer age;
+    private Double age;
 
     @Size(max = 100, message = "category up to 100 chars")
     private String category;
@@ -53,7 +53,7 @@ public class AnimalDto {
         this.image = image;
         this.gender = gender;
         this.size = size;
-        this.age = age;
+        this.age = Double.valueOf(age);
         this.category = category;
         this.location = location;
         this.description = description;
@@ -67,20 +67,21 @@ public class AnimalDto {
     public String getImage() { return image; }
     public String getGender() { return gender; }
     public String getSize() { return size; }
-    public Integer getAge() { return age; }
+    public Double getAge() { return age; }
     public String getCategory() { return category; }
     public String getLocation() { return location; }
     public String getDescription() { return description; }
     public String getOwnerName() { return ownerName; }
     public String getOwnerPhone() { return ownerPhone; }
     public String getStatus() { return status; }
+    public Long getOwnerUserId() { return ownerUserId; }
 
     public void setId(Long id) { this.id = id; }
     public void setName(String name) { this.name = name; }
     public void setImage(String image) { this.image = image; }
     public void setGender(String gender) { this.gender = gender; }
     public void setSize(String size) { this.size = size; }
-    public void setAge(Integer age) { this.age = age; }
+    public void setAge(Double age) { this.age = age; }
     public void setCategory(String category) { this.category = category; }
     public void setLocation(String location) { this.location = location; }
     public void setDescription(String description) { this.description = description; }

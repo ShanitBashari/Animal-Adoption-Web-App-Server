@@ -1,10 +1,13 @@
 package com.adoption.petadoptionserver.service;
 
+import com.adoption.petadoptionserver.dto.AnimalDto;
 import com.adoption.petadoptionserver.dto.UserDto;
 import com.adoption.petadoptionserver.interfaces.AdminService;
+import com.adoption.petadoptionserver.model.Animal;
 import com.adoption.petadoptionserver.model.User;
 import com.adoption.petadoptionserver.repository.UserRepository;
 import com.adoption.petadoptionserver.repository.AnimalRepository;
+import com.adoption.petadoptionserver.enums.AnimalStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +38,26 @@ public class AdminServiceImpl implements AdminService {
         dto.setEnabled(Boolean.TRUE.equals(user.getEnabled()));
         dto.setCreatedAt(user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
 
+        return dto;
+    }
+
+    private AnimalDto toAnimalDto(Animal animal) {
+        if (animal == null) return null;
+
+        AnimalDto dto = new AnimalDto();
+        dto.setId(animal.getId());
+        dto.setOwnerUserId(animal.getOwnerUser() != null ? animal.getOwnerUser().getId() : null);
+        dto.setName(animal.getName());
+        dto.setImage(animal.getImage());
+        dto.setGender(animal.getGender());
+        dto.setSize(animal.getSize());
+        dto.setAge(animal.getAge());
+        dto.setCategory(animal.getCategory() != null ? animal.getCategory().getName() : null);
+        dto.setLocation(animal.getLocation());
+        dto.setDescription(animal.getDescription());
+        dto.setOwnerName(animal.getOwnerName());
+        dto.setOwnerPhone(animal.getOwnerPhone());
+        dto.setStatus(animal.getStatus());
         return dto;
     }
 
@@ -71,5 +94,35 @@ public class AdminServiceImpl implements AdminService {
         }
         animalRepo.deleteById(animalId);
         return true;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AnimalDto> listAnimals() {
+        return animalRepo.findAll().stream()
+                .map(this::toAnimalDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public AnimalDto approveAnimal(Long animalId) {
+        Animal animal = animalRepo.findById(animalId)
+                .orElseThrow(() -> new RuntimeException("Animal not found"));
+
+        animal.setStatus(String.valueOf(AnimalStatus.AVAILABLE));
+
+        Animal saved = animalRepo.save(animal);
+        return toAnimalDto(saved);
+    }
+
+    @Override
+    public AnimalDto rejectAnimal(Long animalId, String reason) {
+        Animal animal = animalRepo.findById(animalId)
+                .orElseThrow(() -> new RuntimeException("Animal not found"));
+
+        animal.setStatus(String.valueOf(AnimalStatus.REJECTED));
+
+        Animal saved = animalRepo.save(animal);
+        return toAnimalDto(saved);
     }
 }

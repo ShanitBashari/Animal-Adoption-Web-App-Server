@@ -13,7 +13,7 @@ public class Animal {
     private String gender;
 
     private String size;
-    private Integer age;
+    private Double age;
     private String location;
 
     @ManyToOne
@@ -53,7 +53,7 @@ public class Animal {
         this.size = size;
     }
 
-    public void setAge(Integer age) {
+    public void setAge(Double age) {
         this.age = age;
     }
 
@@ -104,7 +104,7 @@ public class Animal {
         return size;
     }
 
-    public Integer getAge() {
+    public Double getAge() {
         return age;
     }
 

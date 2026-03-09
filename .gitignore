@@ -33,3 +33,5 @@ build/
 .vscode/
 
 /node_modules
+/uploads
+/package-lock.json

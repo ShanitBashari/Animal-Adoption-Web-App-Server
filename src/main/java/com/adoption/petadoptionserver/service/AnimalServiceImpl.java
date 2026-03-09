@@ -5,6 +5,7 @@ import com.adoption.petadoptionserver.interfaces.AnimalService;
 import com.adoption.petadoptionserver.model.Animal;
 import com.adoption.petadoptionserver.model.Category;
 import com.adoption.petadoptionserver.model.User;
+import com.adoption.petadoptionserver.repository.AdoptionRequestRepository;
 import com.adoption.petadoptionserver.repository.AnimalRepository;
 import com.adoption.petadoptionserver.repository.CategoryRepository;
 import com.adoption.petadoptionserver.repository.UserRepository;
@@ -22,15 +23,18 @@ public class AnimalServiceImpl implements AnimalService {
     private final AnimalRepository animalRepository;
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final AdoptionRequestRepository adoptionRequestRepository;
 
     public AnimalServiceImpl(
             AnimalRepository animalRepository,
             CategoryRepository categoryRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            AdoptionRequestRepository adoptionRequestRepository
     ) {
         this.animalRepository = animalRepository;
         this.categoryRepository = categoryRepository;
         this.userRepository = userRepository;
+        this.adoptionRequestRepository = adoptionRequestRepository;
     }
 
     private AnimalDto toDto(Animal a) {
@@ -38,6 +42,7 @@ public class AnimalServiceImpl implements AnimalService {
 
         AnimalDto dto = new AnimalDto();
         dto.setId(a.getId());
+        dto.setOwnerUserId(a.getOwnerUser() != null ? a.getOwnerUser().getId() : null);
         dto.setName(a.getName());
         dto.setImage(a.getImage());
         dto.setGender(a.getGender());
@@ -65,7 +70,6 @@ public class AnimalServiceImpl implements AnimalService {
         entity.setOwnerPhone(dto.getOwnerPhone());
         entity.setStatus(dto.getStatus());
 
-        // category by name (creates if missing)
         if (dto.getCategory() == null || dto.getCategory().isBlank()) {
             entity.setCategory(null);
         } else {
@@ -96,7 +100,10 @@ public class AnimalServiceImpl implements AnimalService {
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> findAll() {
-        return animalRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
+        return animalRepository.findByStatusNotOrderByIdDesc("INACTIVE")
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -108,7 +115,10 @@ public class AnimalServiceImpl implements AnimalService {
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> search(String q, String category) {
-        return animalRepository.search(q, category).stream().map(this::toDto).collect(Collectors.toList());
+        return animalRepository.search(q, category)
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -141,7 +151,15 @@ public class AnimalServiceImpl implements AnimalService {
         Animal a = opt.get();
         mustBeOwner(username, a);
 
-        animalRepository.deleteById(id);
+        boolean hasRequests = adoptionRequestRepository.existsByAnimal_Id(id);
+
+        if (hasRequests) {
+            a.setStatus("INACTIVE");
+            animalRepository.save(a);
+        } else {
+            animalRepository.deleteById(id);
+        }
+
         return true;
     }
 
@@ -153,5 +171,15 @@ public class AnimalServiceImpl implements AnimalService {
                 .stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Optional<AnimalDto> activateForUser(String username, Long id) {
+        return animalRepository.findById(id).map(existing -> {
+            mustBeOwner(username, existing);
+            existing.setStatus("AVAILABLE");
+            Animal saved = animalRepository.save(existing);
+            return toDto(saved);
+        });
     }
 }
