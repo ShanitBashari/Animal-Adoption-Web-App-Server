@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 public class AnimalDto {
 
     private Long id;
+    private Long ownerUserId;
 
     @NotBlank(message = "name is required")
     @Size(max = 100, message = "name up to 100 chars")
@@ -86,4 +87,5 @@ public class AnimalDto {
     public void setOwnerName(String ownerName) { this.ownerName = ownerName; }
     public void setOwnerPhone(String ownerPhone) { this.ownerPhone = ownerPhone; }
     public void setStatus(String status) { this.status = status; }
+    public void setOwnerUserId(Long ownerUserId) {this.ownerUserId = ownerUserId;}
 }

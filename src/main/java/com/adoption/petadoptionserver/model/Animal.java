@@ -23,6 +23,10 @@ public class Animal {
     @Column(length = 2000)
     private String description;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_user_id")
+    private User ownerUser;
+
     private String ownerName;
     private String ownerPhone;
     private String status;
@@ -77,6 +81,9 @@ public class Animal {
         this.status = status;
     }
 
+    public void setOwnerUser(User ownerUser) { this.ownerUser = ownerUser; }
+
+
     public Long getId() {
         return id;
     }
@@ -124,5 +131,7 @@ public class Animal {
     public String getStatus() {
         return status;
     }
+
+    public User getOwnerUser() { return ownerUser; }
 
 }

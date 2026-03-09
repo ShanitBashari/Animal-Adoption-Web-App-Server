@@ -8,7 +8,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.text.Collator;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/categories")
@@ -24,7 +28,23 @@ public class CategoryController {
     // GET all — used by frontend to populate dropdown
     @GetMapping
     public ResponseEntity<List<CategoryDto>> all() {
-        return ResponseEntity.ok(svc.findAll());
+        List<CategoryDto> list = svc.findAll();
+        if (list == null || list.isEmpty()) {
+            return ResponseEntity.ok(list);
+        }
+
+        Collator collator = Collator.getInstance(new Locale("he"));
+        collator.setStrength(Collator.PRIMARY);
+        Comparator<CategoryDto> cmp = Comparator.comparing(
+                c -> (c.getName() == null ? "" : c.getName()),
+                collator
+        );
+
+        List<CategoryDto> sorted = list.stream()
+                .sorted(cmp)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(sorted);
     }
 
     // GET one by id
@@ -47,7 +67,7 @@ public class CategoryController {
         return svc.update(id, dto).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    // delete (admin)
+    // delete (admin)   ;
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         boolean deleted = svc.delete(id);

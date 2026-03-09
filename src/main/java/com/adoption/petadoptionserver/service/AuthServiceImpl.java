@@ -7,6 +7,7 @@ import com.adoption.petadoptionserver.dto.UserDto;
 import com.adoption.petadoptionserver.interfaces.AuthService;
 import com.adoption.petadoptionserver.model.User;
 import com.adoption.petadoptionserver.repository.UserRepository;
+import com.adoption.petadoptionserver.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,10 +20,12 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepo;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
 
-    public AuthServiceImpl(UserRepository userRepo, PasswordEncoder passwordEncoder) {
+    public AuthServiceImpl(UserRepository userRepo, PasswordEncoder passwordEncoder, JwtService jwtService) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
     }
 
     private UserDto toDto(User user) {
@@ -33,7 +36,6 @@ public class AuthServiceImpl implements AuthService {
         dto.setRoles(List.of(user.getRole()));
         dto.setEnabled(user.getEnabled());
         dto.setCreatedAt(user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
-        // לא ממחזירים סיסמה
         return dto;
     }
 
@@ -60,8 +62,6 @@ public class AuthServiceImpl implements AuthService {
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole("USER");
         user.setEnabled(true);
-        // אפשר למלא fullName/phone אם רוצים להוסיף לשדה ה־User
-
         User saved = userRepo.save(user);
         return toDto(saved);
     }
@@ -83,15 +83,19 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash()))
             throw new AuthenticationException("Invalid username or password");
 
-        // TODO: replace with real JWT generation
-        String fakeToken = "token_" + user.getId() + "_" + System.currentTimeMillis();
-
         var now = java.time.Instant.now();
-        var expires = now.plusSeconds(3600);
+        long ttl = jwtService.getAccessTtlSeconds();
+        var expires = now.plusSeconds(ttl);
+
+        String accessToken = jwtService.generateAccessToken(
+                user.getUsername(),
+                user.getId(),
+                List.of(user.getRole())
+        );
 
         return AuthResponse.builder()
-                .accessToken(fakeToken)
-                .expiresIn(3600L)
+                .accessToken(accessToken)
+                .expiresIn(ttl)
                 .issuedAt(now)
                 .expiresAt(expires)
                 .userId(user.getId())
@@ -100,7 +104,6 @@ public class AuthServiceImpl implements AuthService {
                 .build();
     }
 
-    // small custom runtime exception for auth failures (maps to 401)
     public static class AuthenticationException extends RuntimeException {
         public AuthenticationException(String message) { super(message); }
     }

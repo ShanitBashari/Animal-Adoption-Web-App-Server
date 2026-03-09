@@ -4,8 +4,10 @@ import com.adoption.petadoptionserver.dto.AnimalDto;
 import com.adoption.petadoptionserver.interfaces.AnimalService;
 import com.adoption.petadoptionserver.model.Animal;
 import com.adoption.petadoptionserver.model.Category;
+import com.adoption.petadoptionserver.model.User;
 import com.adoption.petadoptionserver.repository.AnimalRepository;
 import com.adoption.petadoptionserver.repository.CategoryRepository;
+import com.adoption.petadoptionserver.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,11 +21,16 @@ public class AnimalServiceImpl implements AnimalService {
 
     private final AnimalRepository animalRepository;
     private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
 
-    public AnimalServiceImpl(AnimalRepository animalRepository,
-                             CategoryRepository categoryRepository) {
+    public AnimalServiceImpl(
+            AnimalRepository animalRepository,
+            CategoryRepository categoryRepository,
+            UserRepository userRepository
+    ) {
         this.animalRepository = animalRepository;
         this.categoryRepository = categoryRepository;
+        this.userRepository = userRepository;
     }
 
     private AnimalDto toDto(Animal a) {
@@ -73,13 +80,23 @@ public class AnimalServiceImpl implements AnimalService {
         }
     }
 
+    private User mustFindUser(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+    }
+
+    private void mustBeOwner(String username, Animal animal) {
+        Long ownerId = animal.getOwnerUser() != null ? animal.getOwnerUser().getId() : null;
+        Long userId = mustFindUser(username).getId();
+        if (ownerId == null || !ownerId.equals(userId)) {
+            throw new RuntimeException("Forbidden: not owner of this animal");
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> findAll() {
-        return animalRepository.findAll()
-                .stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        return animalRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Override
@@ -91,23 +108,25 @@ public class AnimalServiceImpl implements AnimalService {
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> search(String q, String category) {
-        return animalRepository.search(q, category)
-                .stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+        return animalRepository.search(q, category).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     @Override
-    public AnimalDto create(AnimalDto dto) {
+    public AnimalDto createForUser(String username, AnimalDto dto) {
+        User u = mustFindUser(username);
+
         Animal entity = new Animal();
         applyDtoToEntity(entity, dto);
+        entity.setOwnerUser(u);
+
         Animal saved = animalRepository.save(entity);
         return toDto(saved);
     }
 
     @Override
-    public Optional<AnimalDto> update(Long id, AnimalDto dto) {
+    public Optional<AnimalDto> updateForUser(String username, Long id, AnimalDto dto) {
         return animalRepository.findById(id).map(existing -> {
+            mustBeOwner(username, existing);
             applyDtoToEntity(existing, dto);
             Animal saved = animalRepository.save(existing);
             return toDto(saved);
@@ -115,9 +134,24 @@ public class AnimalServiceImpl implements AnimalService {
     }
 
     @Override
-    public boolean delete(Long id) {
-        if (!animalRepository.existsById(id)) return false;
+    public boolean deleteForUser(String username, Long id) {
+        Optional<Animal> opt = animalRepository.findById(id);
+        if (opt.isEmpty()) return false;
+
+        Animal a = opt.get();
+        mustBeOwner(username, a);
+
         animalRepository.deleteById(id);
         return true;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AnimalDto> findMine(String username) {
+        User u = mustFindUser(username);
+        return animalRepository.findByOwnerUser_IdOrderByIdDesc(u.getId())
+                .stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 }

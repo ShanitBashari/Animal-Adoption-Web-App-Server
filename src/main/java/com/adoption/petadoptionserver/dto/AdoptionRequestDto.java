@@ -17,7 +17,7 @@ public class AdoptionRequestDto {
     @NotNull(message = "animalId is required")
     private Long animalId;
 
-    @NotNull(message = "userId is required")
+    //@NotNull(message = "userId is required")
     private Long userId;
 
     private String userName;
