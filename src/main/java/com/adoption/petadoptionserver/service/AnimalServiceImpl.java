@@ -9,16 +9,27 @@ import com.adoption.petadoptionserver.repository.AdoptionRequestRepository;
 import com.adoption.petadoptionserver.repository.AnimalRepository;
 import com.adoption.petadoptionserver.repository.CategoryRepository;
 import com.adoption.petadoptionserver.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
+/**
+ * Service implementation for animal-related business logic.
+ * Handles creation, search, update, deletion, ownership validation,
+ * and activation of animal listings.
+ */
 @Service
 @Transactional
 public class AnimalServiceImpl implements AnimalService {
+
+    private static final Logger log = LoggerFactory.getLogger(AnimalServiceImpl.class);
+
+    private static final String STATUS_INACTIVE = "INACTIVE";
+    private static final String STATUS_AVAILABLE = "AVAILABLE";
 
     private final AnimalRepository animalRepository;
     private final CategoryRepository categoryRepository;
@@ -37,27 +48,42 @@ public class AnimalServiceImpl implements AnimalService {
         this.adoptionRequestRepository = adoptionRequestRepository;
     }
 
-    private AnimalDto toDto(Animal a) {
-        if (a == null) return null;
+    /**
+     * Converts an Animal entity into an AnimalDto.
+     *
+     * @param animal the animal entity
+     * @return mapped animal DTO
+     */
+    private AnimalDto toDto(Animal animal) {
+        if (animal == null) {
+            return null;
+        }
 
         AnimalDto dto = new AnimalDto();
-        dto.setId(a.getId());
-        dto.setOwnerUserId(a.getOwnerUser() != null ? a.getOwnerUser().getId() : null);
-        dto.setName(a.getName());
-        dto.setImage(a.getImage());
-        dto.setGender(a.getGender());
-        dto.setSize(a.getSize());
-        dto.setAge(a.getAge());
-        dto.setLocation(a.getLocation());
-        dto.setDescription(a.getDescription());
-        dto.setOwnerName(a.getOwnerName());
-        dto.setOwnerPhone(a.getOwnerPhone());
-        dto.setStatus(a.getStatus());
-        dto.setCategory(a.getCategory() != null ? a.getCategory().getName() : null);
+        dto.setId(animal.getId());
+        dto.setOwnerUserId(animal.getOwnerUser() != null ? animal.getOwnerUser().getId() : null);
+        dto.setName(animal.getName());
+        dto.setImage(animal.getImage());
+        dto.setGender(animal.getGender());
+        dto.setSize(animal.getSize());
+        dto.setAge(animal.getAge());
+        dto.setLocation(animal.getLocation());
+        dto.setDescription(animal.getDescription());
+        dto.setOwnerName(animal.getOwnerName());
+        dto.setOwnerPhone(animal.getOwnerPhone());
+        dto.setStatus(animal.getStatus());
+        dto.setCategory(animal.getCategory() != null ? animal.getCategory().getName() : null);
 
         return dto;
     }
 
+    /**
+     * Copies DTO values into an Animal entity.
+     * If the category does not exist, it is created automatically.
+     *
+     * @param entity the target animal entity
+     * @param dto the source DTO
+     */
     private void applyDtoToEntity(Animal entity, AnimalDto dto) {
         entity.setName(dto.getName());
         entity.setImage(dto.getImage());
@@ -72,114 +98,212 @@ public class AnimalServiceImpl implements AnimalService {
 
         if (dto.getCategory() == null || dto.getCategory().isBlank()) {
             entity.setCategory(null);
-        } else {
-            String catName = dto.getCategory().trim();
-            Category category = categoryRepository.findByNameIgnoreCase(catName)
-                    .orElseGet(() -> {
-                        Category c = new Category();
-                        c.setName(catName);
-                        return categoryRepository.save(c);
-                    });
-            entity.setCategory(category);
+            return;
         }
+
+        String categoryName = dto.getCategory().trim();
+        Category category = categoryRepository.findByNameIgnoreCase(categoryName)
+                .orElseGet(() -> {
+                    log.info("Creating missing category with name={}", categoryName);
+                    Category newCategory = new Category();
+                    newCategory.setName(categoryName);
+                    return categoryRepository.save(newCategory);
+                });
+
+        entity.setCategory(category);
     }
 
+    /**
+     * Finds a user by username or throws an exception if not found.
+     *
+     * @param username the username
+     * @return user entity
+     */
     private User mustFindUser(String username) {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
+                .orElseThrow(() -> {
+                    log.warn("User not found for username={}", username);
+                    return new IllegalArgumentException("User not found: " + username);
+                });
     }
 
+    /**
+     * Verifies that the given user is the owner of the given animal.
+     *
+     * @param username the username of the current user
+     * @param animal the target animal
+     */
     private void mustBeOwner(String username, Animal animal) {
         Long ownerId = animal.getOwnerUser() != null ? animal.getOwnerUser().getId() : null;
-        Long userId = mustFindUser(username).getId();
-        if (ownerId == null || !ownerId.equals(userId)) {
-            throw new RuntimeException("Forbidden: not owner of this animal");
+        Long currentUserId = mustFindUser(username).getId();
+
+        if (ownerId == null || !ownerId.equals(currentUserId)) {
+            log.warn("Forbidden animal operation. username={}, animalId={}", username, animal.getId());
+            throw new IllegalStateException("Forbidden: not owner of this animal");
         }
     }
 
+    /**
+     * Returns all active animals except inactive ones.
+     *
+     * @return list of animal DTOs
+     */
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> findAll() {
-        return animalRepository.findByStatusNotOrderByIdDesc("INACTIVE")
+        return animalRepository.findByStatusNotOrderByIdDesc(STATUS_INACTIVE)
                 .stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
     }
 
+    /**
+     * Returns an animal by ID.
+     *
+     * @param id the animal ID
+     * @return optional animal DTO
+     */
     @Override
     @Transactional(readOnly = true)
     public Optional<AnimalDto> findById(Long id) {
         return animalRepository.findById(id).map(this::toDto);
     }
 
+    /**
+     * Searches animals by free-text query and optional category.
+     *
+     * @param q optional search query
+     * @param category optional category filter
+     * @return list of matching animal DTOs
+     */
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> search(String q, String category) {
         return animalRepository.search(q, category)
                 .stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
     }
 
+    /**
+     * Creates a new animal listing for the given user.
+     *
+     * @param username the owner's username
+     * @param dto animal data
+     * @return created animal DTO
+     */
     @Override
     public AnimalDto createForUser(String username, AnimalDto dto) {
-        User u = mustFindUser(username);
+        log.info("Creating animal for username={}", username);
+
+        User user = mustFindUser(username);
 
         Animal entity = new Animal();
         applyDtoToEntity(entity, dto);
-        entity.setOwnerUser(u);
+        entity.setOwnerUser(user);
 
-        Animal saved = animalRepository.save(entity);
-        return toDto(saved);
+        Animal savedAnimal = animalRepository.save(entity);
+
+        log.info("Animal created successfully with id={} for username={}", savedAnimal.getId(), username);
+        return toDto(savedAnimal);
     }
 
+    /**
+     * Updates an existing animal listing owned by the given user.
+     *
+     * @param username the owner's username
+     * @param id the animal ID
+     * @param dto updated animal data
+     * @return updated animal DTO, or empty if not found
+     */
     @Override
     public Optional<AnimalDto> updateForUser(String username, Long id, AnimalDto dto) {
-        return animalRepository.findById(id).map(existing -> {
-            mustBeOwner(username, existing);
-            applyDtoToEntity(existing, dto);
-            Animal saved = animalRepository.save(existing);
-            return toDto(saved);
+        log.info("Updating animal with id={} for username={}", id, username);
+
+        return animalRepository.findById(id).map(existingAnimal -> {
+            mustBeOwner(username, existingAnimal);
+            applyDtoToEntity(existingAnimal, dto);
+            Animal savedAnimal = animalRepository.save(existingAnimal);
+            log.info("Animal updated successfully with id={}", id);
+            return toDto(savedAnimal);
+        }).or(() -> {
+            log.warn("Animal not found for update. id={}", id);
+            return Optional.empty();
         });
     }
 
+    /**
+     * Deletes an animal owned by the given user.
+     * If the animal already has adoption requests, it is marked as INACTIVE instead of being deleted.
+     *
+     * @param username the owner's username
+     * @param id the animal ID
+     * @return true if handled successfully, otherwise false
+     */
     @Override
     public boolean deleteForUser(String username, Long id) {
-        Optional<Animal> opt = animalRepository.findById(id);
-        if (opt.isEmpty()) return false;
+        log.info("Deleting animal with id={} for username={}", id, username);
 
-        Animal a = opt.get();
-        mustBeOwner(username, a);
+        Optional<Animal> animalOptional = animalRepository.findById(id);
+        if (animalOptional.isEmpty()) {
+            log.warn("Animal not found for deletion. id={}", id);
+            return false;
+        }
+
+        Animal animal = animalOptional.get();
+        mustBeOwner(username, animal);
 
         boolean hasRequests = adoptionRequestRepository.existsByAnimal_Id(id);
 
         if (hasRequests) {
-            a.setStatus("INACTIVE");
-            animalRepository.save(a);
+            animal.setStatus(STATUS_INACTIVE);
+            animalRepository.save(animal);
+            log.info("Animal with id={} marked as INACTIVE because adoption requests exist", id);
         } else {
             animalRepository.deleteById(id);
+            log.info("Animal deleted successfully with id={}", id);
         }
 
         return true;
     }
 
+    /**
+     * Returns all animals owned by the given user.
+     *
+     * @param username the username
+     * @return list of owned animal DTOs
+     */
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> findMine(String username) {
-        User u = mustFindUser(username);
-        return animalRepository.findByOwnerUser_IdOrderByIdDesc(u.getId())
+        User user = mustFindUser(username);
+
+        return animalRepository.findByOwnerUser_IdOrderByIdDesc(user.getId())
                 .stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
     }
 
+    /**
+     * Reactivates an inactive animal listing owned by the given user.
+     *
+     * @param username the owner's username
+     * @param id the animal ID
+     * @return updated animal DTO, or empty if not found
+     */
     @Override
     public Optional<AnimalDto> activateForUser(String username, Long id) {
-        return animalRepository.findById(id).map(existing -> {
-            mustBeOwner(username, existing);
-            existing.setStatus("AVAILABLE");
-            Animal saved = animalRepository.save(existing);
-            return toDto(saved);
+        log.info("Activating animal with id={} for username={}", id, username);
+
+        return animalRepository.findById(id).map(existingAnimal -> {
+            mustBeOwner(username, existingAnimal);
+            existingAnimal.setStatus(STATUS_AVAILABLE);
+            Animal savedAnimal = animalRepository.save(existingAnimal);
+            log.info("Animal activated successfully with id={}", id);
+            return toDto(savedAnimal);
+        }).or(() -> {
+            log.warn("Animal not found for activation. id={}", id);
+            return Optional.empty();
         });
     }
 }

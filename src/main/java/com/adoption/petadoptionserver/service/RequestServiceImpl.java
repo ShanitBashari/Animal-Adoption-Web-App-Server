@@ -1,6 +1,8 @@
 package com.adoption.petadoptionserver.service;
 
 import com.adoption.petadoptionserver.dto.AdoptionRequestDto;
+import com.adoption.petadoptionserver.enums.AdoptionRequestStatus;
+import com.adoption.petadoptionserver.enums.AnimalStatus;
 import com.adoption.petadoptionserver.interfaces.RequestService;
 import com.adoption.petadoptionserver.model.AdoptionRequest;
 import com.adoption.petadoptionserver.model.Animal;
@@ -8,158 +10,250 @@ import com.adoption.petadoptionserver.model.User;
 import com.adoption.petadoptionserver.repository.AdoptionRequestRepository;
 import com.adoption.petadoptionserver.repository.AnimalRepository;
 import com.adoption.petadoptionserver.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
+/**
+ * Service implementation for adoption request management.
+ * Handles creation, retrieval, approval, rejection, and cancellation of requests.
+ */
 @Service
 @Transactional
 public class RequestServiceImpl implements RequestService {
 
-    private final AdoptionRequestRepository requestRepo;
-    private final AnimalRepository animalRepo;
-    private final UserRepository userRepo;
+    private static final Logger log = LoggerFactory.getLogger(RequestServiceImpl.class);
 
-    private final DateTimeFormatter dtf = DateTimeFormatter.ISO_DATE_TIME;
+    private static final String STATUS_PENDING = String.valueOf(AdoptionRequestStatus.PENDING);
+    private static final String STATUS_APPROVED = String.valueOf(AdoptionRequestStatus.APPROVED);
+    private static final String STATUS_REJECTED = String.valueOf(AdoptionRequestStatus.REJECTED);
+    private static final String STATUS_CANCELED = String.valueOf(AdoptionRequestStatus.CANCELED);
 
-    public RequestServiceImpl(AdoptionRequestRepository requestRepo,
-                              AnimalRepository animalRepo,
-                              UserRepository userRepo) {
-        this.requestRepo = requestRepo;
-        this.animalRepo = animalRepo;
-        this.userRepo = userRepo;
+    private final AdoptionRequestRepository requestRepository;
+    private final AnimalRepository animalRepository;
+    private final UserRepository userRepository;
+
+    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ISO_DATE_TIME;
+
+    public RequestServiceImpl(
+            AdoptionRequestRepository requestRepository,
+            AnimalRepository animalRepository,
+            UserRepository userRepository
+    ) {
+        this.requestRepository = requestRepository;
+        this.animalRepository = animalRepository;
+        this.userRepository = userRepository;
     }
 
-    private AdoptionRequestDto toDto(AdoptionRequest r) {
-        return AdoptionRequestDto.builder()
-                .id(r.getId())
-                .animalId(r.getAnimal().getId())
-                .userId(r.getUser().getId())
-                .userName(r.getUser().getUsername())
-                .message(r.getMessage())
-                .status(r.getStatus())
-                .reason(r.getReason())
-                .createdAt(r.getCreatedAt() != null ? r.getCreatedAt().format(dtf) : null)
-                .updatedAt(r.getUpdatedAt() != null ? r.getUpdatedAt().format(dtf) : null)
+    /**
+     * Converts an AdoptionRequest entity into an AdoptionRequestDto.
+     *
+     * @param request the adoption request entity
+     * @return mapped adoption request DTO
+     */
+    private AdoptionRequestDto toDto(AdoptionRequest request) {
+        AdoptionRequestDto dto = new AdoptionRequestDto();
+        dto.setId(request.getId());
+        dto.setAnimalId(request.getAnimal().getId());
+        dto.setUserId(request.getUser().getId());
+        dto.setUserName(request.getUser().getUsername());
+        dto.setMessage(request.getMessage());
+        dto.setStatus(request.getStatus());
+        dto.setReason(request.getReason());
+        dto.setCreatedAt(request.getCreatedAt() != null ? request.getCreatedAt().format(dateTimeFormatter) : null);
+        dto.setUpdatedAt(request.getUpdatedAt() != null ? request.getUpdatedAt().format(dateTimeFormatter) : null);
+        dto.setAnimalName(request.getAnimal().getName());
+        dto.setAnimalImage(request.getAnimal().getImage());
+        dto.setAnimalCategory(request.getAnimal().getCategory() != null ? request.getAnimal().getCategory().getName() : null);
+        dto.setAnimalLocation(request.getAnimal().getLocation());
+        dto.setAnimalGender(request.getAnimal().getGender());
+        dto.setAnimalAge(request.getAnimal().getAge());
+        dto.setAnimalSize(request.getAnimal().getSize());
+        dto.setAnimalOwnerName(request.getAnimal().getOwnerName());
+        dto.setAnimalOwnerPhone(request.getAnimal().getOwnerPhone());
+        dto.setAnimalDescription(request.getAnimal().getDescription());
+        dto.setAnimalStatus(request.getAnimal().getStatus());
 
-                .animalName(r.getAnimal().getName())
-                .animalImage(r.getAnimal().getImage())
-                .animalCategory(
-                        r.getAnimal().getCategory() != null
-                                ? r.getAnimal().getCategory().getName()
-                                : null
-                )
-                .animalLocation(r.getAnimal().getLocation())
-                .animalGender(r.getAnimal().getGender())
-                .animalAge(r.getAnimal().getAge())
-                .animalSize(r.getAnimal().getSize())
-                .animalOwnerName(r.getAnimal().getOwnerName())
-                .animalOwnerPhone(r.getAnimal().getOwnerPhone())
-                .animalDescription(r.getAnimal().getDescription())
-                .animalStatus(r.getAnimal().getStatus())
-                .build();
+        return dto;
     }
 
+    /**
+     * Returns adoption requests optionally filtered by user ID and/or animal ID.
+     *
+     * @param userId optional user ID filter
+     * @param animalId optional animal ID filter
+     * @return list of adoption request DTOs
+     */
     @Override
     @Transactional(readOnly = true)
     public List<AdoptionRequestDto> find(Long userId, Long animalId) {
-        List<AdoptionRequest> list;
-        if (userId != null && animalId != null)
-            list = requestRepo.findByUser_IdAndAnimal_Id(userId, animalId);
-        else if (userId != null)
-            list = requestRepo.findByUser_Id(userId);
-        else if (animalId != null)
-            list = requestRepo.findByAnimal_Id(animalId);
-        else
-            list = requestRepo.findAll();
+        List<AdoptionRequest> requests;
 
-        return list.stream().map(this::toDto).collect(Collectors.toList());
+        if (userId != null && animalId != null) {
+            requests = requestRepository.findByUser_IdAndAnimal_Id(userId, animalId);
+        } else if (userId != null) {
+            requests = requestRepository.findByUser_Id(userId);
+        } else if (animalId != null) {
+            requests = requestRepository.findByAnimal_Id(animalId);
+        } else {
+            requests = requestRepository.findAll();
+        }
+
+        return requests.stream()
+                .map(this::toDto)
+                .toList();
     }
 
+    /**
+     * Returns an adoption request by ID.
+     *
+     * @param id the request ID
+     * @return optional adoption request DTO
+     */
     @Override
     @Transactional(readOnly = true)
     public Optional<AdoptionRequestDto> findById(Long id) {
-        return requestRepo.findById(id).map(this::toDto);
+        return requestRepository.findById(id).map(this::toDto);
     }
 
+    /**
+     * Creates a new adoption request after validating business constraints.
+     *
+     * @param dto the adoption request data
+     * @return created adoption request DTO
+     */
     @Override
     public AdoptionRequestDto create(AdoptionRequestDto dto) {
         if (dto == null) {
             throw new IllegalArgumentException("request dto is required");
         }
 
-        User user = userRepo.findById(dto.getUserId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        log.info("Creating adoption request for userId={} animalId={}", dto.getUserId(), dto.getAnimalId());
 
-        Animal animal = animalRepo.findById(dto.getAnimalId())
-                .orElseThrow(() -> new IllegalArgumentException("Animal not found"));
+        User user = userRepository.findById(dto.getUserId())
+                .orElseThrow(() -> {
+                    log.warn("User not found for adoption request. userId={}", dto.getUserId());
+                    return new IllegalArgumentException("User not found");
+                });
+
+        Animal animal = animalRepository.findById(dto.getAnimalId())
+                .orElseThrow(() -> {
+                    log.warn("Animal not found for adoption request. animalId={}", dto.getAnimalId());
+                    return new IllegalArgumentException("Animal not found");
+                });
 
         if (animal.getOwnerUser() != null && animal.getOwnerUser().getId().equals(user.getId())) {
+            log.warn("User cannot adopt own animal. userId={} animalId={}", user.getId(), animal.getId());
             throw new IllegalStateException("You cannot adopt your own animal listing");
         }
 
-        if (requestRepo.existsByUser_IdAndAnimal_IdAndStatus(user.getId(), animal.getId(), "PENDING")) {
+        if (requestRepository.existsByUser_IdAndAnimal_IdAndStatus(user.getId(), animal.getId(), STATUS_PENDING)) {
+            log.warn("Pending adoption request already exists. userId={} animalId={}", user.getId(), animal.getId());
             throw new IllegalStateException("You already sent a pending request for this animal");
         }
 
-        AdoptionRequest r = new AdoptionRequest();
-        r.setUser(user);
-        r.setAnimal(animal);
-        r.setMessage(dto.getMessage());
-        r.setStatus("PENDING");
-        r.setReason(null);
+        AdoptionRequest request = new AdoptionRequest();
+        request.setUser(user);
+        request.setAnimal(animal);
+        request.setMessage(dto.getMessage());
+        request.setStatus(STATUS_PENDING);
+        request.setReason(null);
 
-        AdoptionRequest saved = requestRepo.save(r);
-        return toDto(saved);
+        AdoptionRequest savedRequest = requestRepository.save(request);
+
+        log.info("Adoption request created successfully with id={}", savedRequest.getId());
+        return toDto(savedRequest);
     }
 
+    /**
+     * Approves an existing pending adoption request.
+     *
+     * @param id the request ID
+     * @return updated adoption request DTO, or empty if not found
+     */
     @Override
     public Optional<AdoptionRequestDto> approve(Long id) {
-        return requestRepo.findById(id).map(r -> {
-            if (!"PENDING".equals(r.getStatus())) {
+        log.info("Approving adoption request with id={}", id);
+
+        return requestRepository.findById(id).map(request -> {
+            if (!STATUS_PENDING.equals(request.getStatus())) {
+                log.warn("Only pending requests can be approved. id={} status={}", id, request.getStatus());
                 throw new IllegalStateException("Only pending requests can be approved");
             }
 
-            r.setStatus("APPROVED");
-            r.setReason(null);
+            request.setStatus(STATUS_APPROVED);
+            request.setReason(null);
 
-            // OPTIONAL: change animal status to adopted (or whatever your domain requires)
-            // Animal animal = r.getAnimal();
-            // animal.setStatus("ADOPTED");
-            // animalRepo.save(animal);
+            AdoptionRequest savedRequest = requestRepository.save(request);
+            log.info("Adoption request approved successfully with id={}", id);
 
-            AdoptionRequest saved = requestRepo.save(r);
-            return toDto(saved);
+            return toDto(savedRequest);
+        }).or(() -> {
+            log.warn("Adoption request not found for approval. id={}", id);
+            return Optional.empty();
         });
     }
 
+    /**
+     * Rejects an existing pending adoption request.
+     *
+     * @param id the request ID
+     * @param reason optional rejection reason
+     * @return updated adoption request DTO, or empty if not found
+     */
     @Override
     public Optional<AdoptionRequestDto> reject(Long id, String reason) {
-        return requestRepo.findById(id).map(r -> {
-            if (!"PENDING".equals(r.getStatus())) {
+        log.info("Rejecting adoption request with id={}", id);
+
+        return requestRepository.findById(id).map(request -> {
+            if (!STATUS_PENDING.equals(request.getStatus())) {
+                log.warn("Only pending requests can be rejected. id={} status={}", id, request.getStatus());
                 throw new IllegalStateException("Only pending requests can be rejected");
             }
-            r.setStatus("REJECTED");
-            r.setReason(reason);
-            AdoptionRequest saved = requestRepo.save(r);
-            return toDto(saved);
+
+            request.setStatus(STATUS_REJECTED);
+            request.setReason(reason);
+
+            AdoptionRequest savedRequest = requestRepository.save(request);
+            log.info("Adoption request rejected successfully with id={}", id);
+
+            return toDto(savedRequest);
+        }).or(() -> {
+            log.warn("Adoption request not found for rejection. id={}", id);
+            return Optional.empty();
         });
     }
 
+    /**
+     * Cancels an existing pending adoption request.
+     *
+     * @param id the request ID
+     * @return true if canceled successfully
+     */
     @Override
     public boolean cancel(Long id) {
-        AdoptionRequest r = requestRepo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Request not found"));
+        log.info("Canceling adoption request with id={}", id);
 
-        if (!"PENDING".equals(r.getStatus()))
+        AdoptionRequest request = requestRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.warn("Adoption request not found for cancellation. id={}", id);
+                    return new IllegalArgumentException("Request not found");
+                });
+
+        if (!STATUS_PENDING.equals(request.getStatus())) {
+            log.warn("Only pending requests can be canceled. id={} status={}", id, request.getStatus());
             throw new IllegalStateException("Only pending requests can be canceled");
+        }
 
-        r.setStatus("CANCELED");
-        requestRepo.save(r);
+        request.setStatus(STATUS_CANCELED);
+        requestRepository.save(request);
+
+        log.info("Adoption request canceled successfully with id={}", id);
         return true;
     }
 }

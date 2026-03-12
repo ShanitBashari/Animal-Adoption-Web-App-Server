@@ -1,38 +1,65 @@
 package com.adoption.petadoptionserver.security;
 
+import com.adoption.petadoptionserver.enums.UserRole;
 import com.adoption.petadoptionserver.model.User;
 import com.adoption.petadoptionserver.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+/**
+ * Custom implementation of Spring Security's UserDetailsService.
+ * Loads user authentication data from the database by username.
+ */
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
 
-    private final UserRepository userRepo;
+    private static final Logger log = LoggerFactory.getLogger(CustomUserDetailsService.class);
 
-    public CustomUserDetailsService(UserRepository userRepo) {
-        this.userRepo = userRepo;
+    private final UserRepository userRepository;
+
+    public CustomUserDetailsService(UserRepository userRepository) {
+        this.userRepository = userRepository;
     }
 
+    /**
+     * Loads a user by username and converts it into a Spring Security UserDetails object.
+     *
+     * @param username the username used during authentication
+     * @return authenticated user details
+     * @throws UsernameNotFoundException if no user is found with the given username
+     */
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User u = userRepo.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        log.info("Loading user details for username={}", username);
 
-        String role = u.getRole() == null ? "USER" : u.getRole().trim().toUpperCase();
-        List<SimpleGrantedAuthority> auths = List.of(new SimpleGrantedAuthority("ROLE_" + role));
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    log.warn("User not found for username={}", username);
+                    return new UsernameNotFoundException("User not found");
+                });
 
-        boolean enabled = !Boolean.FALSE.equals(u.getEnabled());
+        String role = user.getRole() == null
+                ? String.valueOf(UserRole.USER)
+                : user.getRole().trim().toUpperCase();
+
+        List<SimpleGrantedAuthority> authorities =
+                List.of(new SimpleGrantedAuthority("ROLE_" + role));
+
+        boolean enabled = !Boolean.FALSE.equals(user.getEnabled());
+
+        log.info("User details loaded successfully for username={} with role={}", username, role);
 
         return new AppUserDetails(
-                u.getId(),
-                u.getUsername(),
-                u.getPasswordHash(),
+                user.getId(),
+                user.getUsername(),
+                user.getPasswordHash(),
                 enabled,
-                auths
+                authorities
         );
     }
 }

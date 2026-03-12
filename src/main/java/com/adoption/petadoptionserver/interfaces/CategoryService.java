@@ -7,9 +7,10 @@ import java.util.Optional;
 
 public interface CategoryService {
     List<CategoryDto> findAll();
+    List<CategoryDto> findAllActive();
     Optional<CategoryDto> findById(Long id);
     Optional<CategoryDto> findByName(String name);
     CategoryDto create(CategoryDto dto);
-    Optional<CategoryDto> update(Long id, CategoryDto dto);
-    boolean delete(Long id);
+    Optional<CategoryDto> deactivate(Long id);
+    Optional<CategoryDto> reactivate(Long id);
 }

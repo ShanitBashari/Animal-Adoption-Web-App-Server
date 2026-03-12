@@ -2,75 +2,71 @@ package com.adoption.petadoptionserver.controller;
 
 import com.adoption.petadoptionserver.dto.CategoryDto;
 import com.adoption.petadoptionserver.interfaces.CategoryService;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URI;
 import java.text.Collator;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
 
+/**
+ * Public controller for category-related operations.
+ * Provides endpoints for listing active categories and retrieving a category by ID.
+ */
 @RestController
 @RequestMapping("/api/categories")
 @CrossOrigin(origins = "http://localhost:3000")
 public class CategoryController {
 
-    private final CategoryService svc;
+    private final CategoryService categoryService;
 
-    public CategoryController(CategoryService svc) {
-        this.svc = svc;
+    public CategoryController(CategoryService categoryService) {
+        this.categoryService = categoryService;
     }
 
-    // GET all — used by frontend to populate dropdown
+    /**
+     * Returns all active categories sorted alphabetically by name.
+     *
+     * @return sorted list of active categories
+     */
     @GetMapping
-    public ResponseEntity<List<CategoryDto>> all() {
-        List<CategoryDto> list = svc.findAll();
-        if (list == null || list.isEmpty()) {
-            return ResponseEntity.ok(list);
-        }
+    public ResponseEntity<List<CategoryDto>> getAllActive() {
+        List<CategoryDto> categories = categoryService.findAllActive();
+        List<CategoryDto> sortedCategories = sortCategoriesByName(categories);
+        return ResponseEntity.ok(sortedCategories);
+    }
 
-        Collator collator = Collator.getInstance(new Locale("he"));
+    /**
+     * Returns a category by ID.
+     *
+     * @param id the category ID
+     * @return the category, or 404 if not found
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<CategoryDto> getOne(@PathVariable Long id) {
+        return categoryService.findById(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Sorts categories alphabetically by name using a case-insensitive comparator.
+     *
+     * @param categories the list of categories to sort
+     * @return sorted list of categories
+     */
+    private List<CategoryDto> sortCategoriesByName(List<CategoryDto> categories) {
+        Collator collator = Collator.getInstance(Locale.ENGLISH);
         collator.setStrength(Collator.PRIMARY);
-        Comparator<CategoryDto> cmp = Comparator.comparing(
-                c -> (c.getName() == null ? "" : c.getName()),
+
+        Comparator<CategoryDto> comparator = Comparator.comparing(
+                category -> category.getName() == null ? "" : category.getName(),
                 collator
         );
 
-        List<CategoryDto> sorted = list.stream()
-                .sorted(cmp)
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(sorted);
-    }
-
-    // GET one by id
-    @GetMapping("/{id}")
-    public ResponseEntity<CategoryDto> getOne(@PathVariable Long id) {
-        return svc.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
-    }
-
-    // create (admin)
-    @PostMapping
-    public ResponseEntity<CategoryDto> create(@Valid @RequestBody CategoryDto dto, UriComponentsBuilder uriBuilder) {
-        CategoryDto created = svc.create(dto);
-        URI uri = uriBuilder.path("/api/categories/{id}").buildAndExpand(created.getId()).toUri();
-        return ResponseEntity.created(uri).body(created);
-    }
-
-    // update (admin)
-    @PutMapping("/{id}")
-    public ResponseEntity<CategoryDto> update(@PathVariable Long id, @Valid @RequestBody CategoryDto dto) {
-        return svc.update(id, dto).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
-    }
-
-    // delete (admin)   ;
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        boolean deleted = svc.delete(id);
-        return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+        return categories.stream()
+                .sorted(comparator)
+                .toList();
     }
 }

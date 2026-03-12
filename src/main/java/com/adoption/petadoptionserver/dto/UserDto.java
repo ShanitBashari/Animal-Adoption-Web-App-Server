@@ -40,6 +40,6 @@ public class UserDto {
     private String createdAt;
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-    @Size(min = 6, message = "password must be at least 6 characters")
+    @Size(min = 8, message = "password must be at least 8 characters")
     private String password;
 }

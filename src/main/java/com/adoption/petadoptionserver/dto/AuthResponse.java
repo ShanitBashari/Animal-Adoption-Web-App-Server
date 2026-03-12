@@ -16,7 +16,6 @@ public class AuthResponse {
     // JWT access token
     private String accessToken;
 
-    // optional (later)
     private String refreshToken;
 
     // always Bearer but NOT inside builder bug

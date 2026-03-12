@@ -10,11 +10,14 @@ public class CategoryDto {
     @Size(max = 100, message = "name max 100 chars")
     private String name;
 
+    private Boolean active;
+
     public CategoryDto() {}
 
-    public CategoryDto(Long id, String name) {
+    public CategoryDto(Long id, String name, Boolean active) {
         this.id = id;
         this.name = name;
+        this.active = active;
     }
 
     public Long getId() { return id; }
@@ -22,4 +25,12 @@ public class CategoryDto {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public Boolean  isActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
+    }
 }

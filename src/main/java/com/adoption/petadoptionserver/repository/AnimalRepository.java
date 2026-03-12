@@ -20,8 +20,6 @@ public interface AnimalRepository extends JpaRepository<Animal, Long> {
     """)
 
     List<Animal> search(@Param("q") String q, @Param("category") String category);
-
     List<Animal> findByOwnerUser_IdOrderByIdDesc(Long ownerUserId);
-
     List<Animal> findByStatusNotOrderByIdDesc(String status);
 }
