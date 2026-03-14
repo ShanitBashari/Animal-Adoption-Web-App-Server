@@ -6,10 +6,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface RequestService {
+
     List<AdoptionRequestDto> find(Long userId, Long animalId);
     Optional<AdoptionRequestDto> findById(Long id);
-    AdoptionRequestDto create(AdoptionRequestDto dto);
-    Optional<AdoptionRequestDto> approve(Long id);
-    Optional<AdoptionRequestDto> reject(Long id, String reason);
-    boolean cancel(Long id);
+    List<AdoptionRequestDto> findMine(String username);
+    List<AdoptionRequestDto> findReceived(String username);
+    AdoptionRequestDto create(String username, AdoptionRequestDto dto);
+    Optional<AdoptionRequestDto> approve(String username, Long id);
+    Optional<AdoptionRequestDto> reject(String username, Long id, String reason);
+    boolean cancel(String username, Long id);
 }

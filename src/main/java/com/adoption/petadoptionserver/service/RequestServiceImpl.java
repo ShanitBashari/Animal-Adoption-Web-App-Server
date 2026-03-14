@@ -50,12 +50,6 @@ public class RequestServiceImpl implements RequestService {
         this.userRepository = userRepository;
     }
 
-    /**
-     * Converts an AdoptionRequest entity into an AdoptionRequestDto.
-     *
-     * @param request the adoption request entity
-     * @return mapped adoption request DTO
-     */
     private AdoptionRequestDto toDto(AdoptionRequest request) {
         AdoptionRequestDto dto = new AdoptionRequestDto();
         dto.setId(request.getId());
@@ -82,13 +76,40 @@ public class RequestServiceImpl implements RequestService {
         return dto;
     }
 
-    /**
-     * Returns adoption requests optionally filtered by user ID and/or animal ID.
-     *
-     * @param userId optional user ID filter
-     * @param animalId optional animal ID filter
-     * @return list of adoption request DTOs
-     */
+    private User mustFindUser(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> {
+                    log.warn("User not found for username={}", username);
+                    return new IllegalArgumentException("User not found: " + username);
+                });
+    }
+
+    private void mustBeAnimalOwner(String username, AdoptionRequest request) {
+        User currentUser = mustFindUser(username);
+        Long currentUserId = currentUser.getId();
+
+        Long ownerUserId = request.getAnimal() != null && request.getAnimal().getOwnerUser() != null
+                ? request.getAnimal().getOwnerUser().getId()
+                : null;
+
+        if (ownerUserId == null || !ownerUserId.equals(currentUserId)) {
+            log.warn("Forbidden request action. username={}, requestId={}", username, request.getId());
+            throw new IllegalStateException("Forbidden: only animal owner can manage this request");
+        }
+    }
+
+    private void mustBeRequester(String username, AdoptionRequest request) {
+        User currentUser = mustFindUser(username);
+        Long currentUserId = currentUser.getId();
+
+        Long requesterUserId = request.getUser() != null ? request.getUser().getId() : null;
+
+        if (requesterUserId == null || !requesterUserId.equals(currentUserId)) {
+            log.warn("Forbidden request cancel. username={}, requestId={}", username, request.getId());
+            throw new IllegalStateException("Forbidden: only request owner can cancel this request");
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<AdoptionRequestDto> find(Long userId, Long animalId) {
@@ -109,37 +130,43 @@ public class RequestServiceImpl implements RequestService {
                 .toList();
     }
 
-    /**
-     * Returns an adoption request by ID.
-     *
-     * @param id the request ID
-     * @return optional adoption request DTO
-     */
     @Override
     @Transactional(readOnly = true)
     public Optional<AdoptionRequestDto> findById(Long id) {
         return requestRepository.findById(id).map(this::toDto);
     }
 
-    /**
-     * Creates a new adoption request after validating business constraints.
-     *
-     * @param dto the adoption request data
-     * @return created adoption request DTO
-     */
     @Override
-    public AdoptionRequestDto create(AdoptionRequestDto dto) {
+    @Transactional(readOnly = true)
+    public List<AdoptionRequestDto> findMine(String username) {
+        User user = mustFindUser(username);
+
+        return requestRepository.findByUser_IdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdoptionRequestDto> findReceived(String username) {
+        User user = mustFindUser(username);
+
+        return requestRepository.findByAnimal_OwnerUser_IdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Override
+    public AdoptionRequestDto create(String username, AdoptionRequestDto dto) {
         if (dto == null) {
             throw new IllegalArgumentException("request dto is required");
         }
 
-        log.info("Creating adoption request for userId={} animalId={}", dto.getUserId(), dto.getAnimalId());
+        User user = mustFindUser(username);
 
-        User user = userRepository.findById(dto.getUserId())
-                .orElseThrow(() -> {
-                    log.warn("User not found for adoption request. userId={}", dto.getUserId());
-                    return new IllegalArgumentException("User not found");
-                });
+        log.info("Creating adoption request for username={} animalId={}", username, dto.getAnimalId());
 
         Animal animal = animalRepository.findById(dto.getAnimalId())
                 .orElseThrow(() -> {
@@ -150,6 +177,11 @@ public class RequestServiceImpl implements RequestService {
         if (animal.getOwnerUser() != null && animal.getOwnerUser().getId().equals(user.getId())) {
             log.warn("User cannot adopt own animal. userId={} animalId={}", user.getId(), animal.getId());
             throw new IllegalStateException("You cannot adopt your own animal listing");
+        }
+
+        if (!String.valueOf(AnimalStatus.AVAILABLE).equals(animal.getStatus())) {
+            log.warn("Cannot request adoption for non-available animal. animalId={} status={}", animal.getId(), animal.getStatus());
+            throw new IllegalStateException("This animal is not available for adoption");
         }
 
         if (requestRepository.existsByUser_IdAndAnimal_IdAndStatus(user.getId(), animal.getId(), STATUS_PENDING)) {
@@ -170,24 +202,40 @@ public class RequestServiceImpl implements RequestService {
         return toDto(savedRequest);
     }
 
-    /**
-     * Approves an existing pending adoption request.
-     *
-     * @param id the request ID
-     * @return updated adoption request DTO, or empty if not found
-     */
     @Override
-    public Optional<AdoptionRequestDto> approve(Long id) {
-        log.info("Approving adoption request with id={}", id);
+    public Optional<AdoptionRequestDto> approve(String username, Long id) {
+        log.info("Approving adoption request with id={} by username={}", id, username);
 
         return requestRepository.findById(id).map(request -> {
+            mustBeAnimalOwner(username, request);
+
             if (!STATUS_PENDING.equals(request.getStatus())) {
                 log.warn("Only pending requests can be approved. id={} status={}", id, request.getStatus());
                 throw new IllegalStateException("Only pending requests can be approved");
             }
 
+            Animal animal = request.getAnimal();
+            if (animal == null) {
+                throw new IllegalStateException("Request has no animal");
+            }
+
             request.setStatus(STATUS_APPROVED);
             request.setReason(null);
+
+            animal.setStatus(String.valueOf(AnimalStatus.ADOPTED));
+            animalRepository.save(animal);
+
+            List<AdoptionRequest> otherPendingRequests =
+                    requestRepository.findByAnimal_IdAndStatus(animal.getId(), STATUS_PENDING);
+
+            for (AdoptionRequest otherRequest : otherPendingRequests) {
+                if (!otherRequest.getId().equals(request.getId())) {
+                    otherRequest.setStatus(STATUS_REJECTED);
+                    otherRequest.setReason("Another adoption request was approved for this animal");
+                }
+            }
+
+            requestRepository.saveAll(otherPendingRequests);
 
             AdoptionRequest savedRequest = requestRepository.save(request);
             log.info("Adoption request approved successfully with id={}", id);
@@ -199,18 +247,13 @@ public class RequestServiceImpl implements RequestService {
         });
     }
 
-    /**
-     * Rejects an existing pending adoption request.
-     *
-     * @param id the request ID
-     * @param reason optional rejection reason
-     * @return updated adoption request DTO, or empty if not found
-     */
     @Override
-    public Optional<AdoptionRequestDto> reject(Long id, String reason) {
-        log.info("Rejecting adoption request with id={}", id);
+    public Optional<AdoptionRequestDto> reject(String username, Long id, String reason) {
+        log.info("Rejecting adoption request with id={} by username={}", id, username);
 
         return requestRepository.findById(id).map(request -> {
+            mustBeAnimalOwner(username, request);
+
             if (!STATUS_PENDING.equals(request.getStatus())) {
                 log.warn("Only pending requests can be rejected. id={} status={}", id, request.getStatus());
                 throw new IllegalStateException("Only pending requests can be rejected");
@@ -229,21 +272,17 @@ public class RequestServiceImpl implements RequestService {
         });
     }
 
-    /**
-     * Cancels an existing pending adoption request.
-     *
-     * @param id the request ID
-     * @return true if canceled successfully
-     */
     @Override
-    public boolean cancel(Long id) {
-        log.info("Canceling adoption request with id={}", id);
+    public boolean cancel(String username, Long id) {
+        log.info("Canceling adoption request with id={} by username={}", id, username);
 
         AdoptionRequest request = requestRepository.findById(id)
                 .orElseThrow(() -> {
                     log.warn("Adoption request not found for cancellation. id={}", id);
                     return new IllegalArgumentException("Request not found");
                 });
+
+        mustBeRequester(username, request);
 
         if (!STATUS_PENDING.equals(request.getStatus())) {
             log.warn("Only pending requests can be canceled. id={} status={}", id, request.getStatus());
