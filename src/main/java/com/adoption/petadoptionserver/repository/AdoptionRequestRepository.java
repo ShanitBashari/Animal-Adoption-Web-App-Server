@@ -15,4 +15,5 @@ public interface AdoptionRequestRepository extends JpaRepository<AdoptionRequest
     List<AdoptionRequest> findByAnimal_IdAndStatus(Long animalId, String status);
     boolean existsByUser_IdAndAnimal_IdAndStatus(Long userId, Long animalId, String status);
     boolean existsByAnimal_Id(Long animalId);
+    boolean existsByAnimal_IdAndStatus(Long animalId, String status);
 }

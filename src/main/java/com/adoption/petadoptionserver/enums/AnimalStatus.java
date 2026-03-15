@@ -1,8 +1,9 @@
 package com.adoption.petadoptionserver.enums;
 
 public enum AnimalStatus {
-    AVAILABLE,
-    REJECTED,
     PENDING,
+    REJECTED,
+    AVAILABLE,
+    INACTIVE,
     ADOPTED
 }

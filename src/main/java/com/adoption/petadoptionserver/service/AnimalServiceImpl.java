@@ -1,7 +1,10 @@
 package com.adoption.petadoptionserver.service;
 
 import com.adoption.petadoptionserver.dto.AnimalDto;
+import com.adoption.petadoptionserver.enums.AdoptionRequestStatus;
+import com.adoption.petadoptionserver.enums.AnimalStatus;
 import com.adoption.petadoptionserver.interfaces.AnimalService;
+import com.adoption.petadoptionserver.model.AdoptionRequest;
 import com.adoption.petadoptionserver.model.Animal;
 import com.adoption.petadoptionserver.model.Category;
 import com.adoption.petadoptionserver.model.User;
@@ -28,8 +31,8 @@ public class AnimalServiceImpl implements AnimalService {
 
     private static final Logger log = LoggerFactory.getLogger(AnimalServiceImpl.class);
 
-    private static final String STATUS_INACTIVE = "INACTIVE";
-    private static final String STATUS_AVAILABLE = "AVAILABLE";
+    private static final String STATUS_INACTIVE = String.valueOf(AnimalStatus.INACTIVE);
+    private static final String STATUS_AVAILABLE = String.valueOf(AnimalStatus.AVAILABLE);
 
     private final AnimalRepository animalRepository;
     private final CategoryRepository categoryRepository;
@@ -151,7 +154,7 @@ public class AnimalServiceImpl implements AnimalService {
     @Override
     @Transactional(readOnly = true)
     public List<AnimalDto> findAll() {
-        return animalRepository.findByStatusNotOrderByIdDesc(STATUS_INACTIVE)
+        return animalRepository.findByStatusOrderByIdDesc(String.valueOf(AnimalStatus.AVAILABLE))
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -256,9 +259,20 @@ public class AnimalServiceImpl implements AnimalService {
         boolean hasRequests = adoptionRequestRepository.existsByAnimal_Id(id);
 
         if (hasRequests) {
-            animal.setStatus(STATUS_INACTIVE);
+            List<AdoptionRequest> pendingRequests =
+                    adoptionRequestRepository.findByAnimal_IdAndStatus(id, String.valueOf(AdoptionRequestStatus.PENDING));
+
+            for (AdoptionRequest request : pendingRequests) {
+                request.setStatus(String.valueOf(AdoptionRequestStatus.REJECTED));
+                request.setReason("This animal listing was removed by the owner");
+            }
+
+            adoptionRequestRepository.saveAll(pendingRequests);
+
+            animal.setStatus(String.valueOf(AnimalStatus.INACTIVE));
             animalRepository.save(animal);
-            log.info("Animal with id={} marked as INACTIVE because adoption requests exist", id);
+
+            log.info("Animal with id={} marked as INACTIVE and pending requests were rejected", id);
         } else {
             animalRepository.deleteById(id);
             log.info("Animal deleted successfully with id={}", id);
@@ -297,6 +311,11 @@ public class AnimalServiceImpl implements AnimalService {
 
         return animalRepository.findById(id).map(existingAnimal -> {
             mustBeOwner(username, existingAnimal);
+
+            if (!String.valueOf(AnimalStatus.INACTIVE).equals(existingAnimal.getStatus())) {
+                throw new IllegalStateException("Only inactive animals can be activated");
+            }
+
             existingAnimal.setStatus(STATUS_AVAILABLE);
             Animal savedAnimal = animalRepository.save(existingAnimal);
             log.info("Animal activated successfully with id={}", id);

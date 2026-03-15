@@ -292,6 +292,19 @@ public class RequestServiceImpl implements RequestService {
         request.setStatus(STATUS_CANCELED);
         requestRepository.save(request);
 
+        Animal animal = request.getAnimal();
+        if (animal != null && String.valueOf(AnimalStatus.INACTIVE).equals(animal.getStatus())) {
+            boolean hasOtherPendingRequests =
+                    requestRepository.existsByAnimal_IdAndStatus(animal.getId(), STATUS_PENDING);
+
+            if (!hasOtherPendingRequests) {
+                animal.setStatus(String.valueOf(AnimalStatus.AVAILABLE));
+                animalRepository.save(animal);
+
+                log.info("Animal id={} restored to AVAILABLE after request cancellation", animal.getId());
+            }
+        }
+
         log.info("Adoption request canceled successfully with id={}", id);
         return true;
     }
